@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpeakUp AI - Local Offline AI Mock Interviewer</title>
+    <meta name="description" content="An offline, voice-enabled technical mock interview interface powered by Ollama and faster-whisper. Practice your coding and technical interviews locally.">
+    <!-- Google Fonts: Outfit and Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="background-decorations" aria-hidden="true">
+        <div class="circle circle-1"></div>
+        <div class="circle circle-2"></div>
+        <div class="circle circle-3"></div>
+    </div>
+
+    <main class="app-container">
+        <!-- HEADER -->
+        <header class="app-header">
+            <div class="logo-area">
+                <span class="logo-icon" aria-hidden="true">🎙️</span>
+                <h1 id="app-title">SpeakUp AI <span class="badge">Offline</span></h1>
+            </div>
+            <p class="subtitle">Elevate your speech & technical skills with local, private mock interviews</p>
+        </header>
+
+        <!-- SETUP CARD -->
+        <section id="setup-card" class="glass-card active">
+            <h2 class="section-title">Configure Your Mock Interview</h2>
+            <p class="section-desc">Choose your target job role and select an Ollama LLM model running on your local machine.</p>
+            
+            <form id="setup-form" onsubmit="return false;">
+                <div class="form-group">
+                    <label for="role-select">Target Job Role</label>
+                    <select id="role-select" class="form-control">
+                        <option value="Python Backend Developer">Python Backend Developer</option>
+                        <option value="Frontend React Developer">Frontend React Developer</option>
+                        <option value="Full Stack Software Engineer">Full Stack Software Engineer</option>
+                        <option value="Data Scientist / AI Engineer">Data Scientist / AI Engineer</option>
+                        <option value="DevOps & Cloud Engineer">DevOps & Cloud Engineer</option>
+                        <option value="Product Manager">Product Manager</option>
+                        <option value="custom">-- Custom Role --</option>
+                    </select>
+                </div>
+
+                <div id="custom-role-container" class="form-group hidden">
+                    <label for="custom-role-input">Specify Custom Job Role</label>
+                    <input type="text" id="custom-role-input" class="form-control" placeholder="e.g. Go backend engineer, iOS dev...">
+                </div>
+
+                <div class="form-group">
+                    <label for="model-select">Local Ollama LLM Model</label>
+                    <div class="select-with-refresh">
+                        <select id="model-select" class="form-control">
+                            <!-- Populated dynamically -->
+                            <option value="llama3.2:1b">llama3.2:1b (Loading...)</option>
+                        </select>
+                        <button type="button" id="refresh-models-btn" class="icon-btn" title="Refresh local models list">
+                            🔄
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-action">
+                    <button type="button" id="start-btn" class="btn btn-primary btn-glowing">
+                        Start Mock Interview
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- INTERVIEW DASHBOARD -->
+        <section id="interview-dashboard" class="dashboard-grid hidden">
+            
+            <!-- LEFT PANEL: Controls & Status -->
+            <aside class="control-panel glass-card">
+                <div class="panel-section interviewer-avatar-box">
+                    <div class="avatar-glow">
+                        <div class="avatar-ring animate-pulse-ring"></div>
+                        <div class="avatar-icon">🤖</div>
+                    </div>
+                    <div class="interviewer-details">
+                        <h3 class="interviewer-name">AI Interviewer</h3>
+                        <p id="interviewer-status-text" class="status-badge idle">Idle</p>
+                    </div>
+                </div>
+
+                <!-- Text-to-Speech Settings -->
+                <div class="panel-section">
+                    <h4 class="section-subtitle">Text-to-Speech (TTS)</h4>
+                    <div class="form-group compact">
+                        <label for="voice-select">Voice Type</label>
+                        <select id="voice-select" class="form-control font-sm">
+                            <option value="default">Default System Voice</option>
+                        </select>
+                    </div>
+                    <div class="form-group compact">
+                        <div class="slider-label">
+                            <label for="speed-range">Speed Rate</label>
+                            <span id="speed-val">1.0x</span>
+                        </div>
+                        <input type="range" id="speed-range" min="0.5" max="2.0" step="0.1" value="1.0" class="slider">
+                    </div>
+                    <button type="button" id="toggle-voice-btn" class="btn btn-secondary btn-sm block-btn">
+                        🔊 Mute Voice Output
+                    </button>
+                </div>
+
+                <!-- Audio Visualizer Visuals -->
+                <div class="panel-section visualizer-section">
+                    <h4 class="section-subtitle">Acoustic Feedback</h4>
+                    <div class="visualizer-wrapper">
+                        <canvas id="visualizer-canvas" width="280" height="80"></canvas>
+                        <div id="audio-wave-animation" class="wave-animation hidden">
+                            <span></span><span></span><span></span><span></span><span></span>
+                            <span></span><span></span><span></span><span></span><span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-footer">
+                    <button type="button" id="exit-btn" class="btn btn-danger block-btn">
+                        Exit Interview
+                    </button>
+                </div>
+            </aside>
+
+            <!-- RIGHT PANEL: Live Chat & Feedback -->
+            <section class="chat-panel glass-card">
+                <h2 class="sr-only">Interview Chat Log</h2>
+                
+                <!-- Chat log -->
+                <div id="chat-history" class="chat-history">
+                    <!-- Dynamic chat messages go here -->
+                    <div class="chat-placeholder">
+                        <div class="placeholder-icon">💬</div>
+                        <p>Welcome! Your interview will begin shortly. Adjust your settings on the left, then use the controls below to respond.</p>
+                    </div>
+                </div>
+
+                <!-- Status Bar -->
+                <div id="status-bar" class="status-bar hidden">
+                    <span class="status-spinner"></span>
+                    <span id="status-text">Processing your response...</span>
+                </div>
+
+                <!-- Inputs Panel -->
+                <div class="input-controls-area">
+                    
+                    <!-- VOICE RECORDING AREA -->
+                    <div id="voice-input-section" class="input-mode-container active">
+                        <div class="voice-buttons-group">
+                            <button type="button" id="record-btn" class="btn btn-record" aria-label="Record Answer">
+                                <span class="mic-icon">🎙️</span>
+                            </button>
+                            <p class="voice-help-text">Click the mic to <strong>start recording</strong>. Click again when <strong>finished</strong>.</p>
+                        </div>
+                    </div>
+
+                    <!-- TEXT FALLBACK INPUT -->
+                    <div id="text-input-section" class="input-mode-container hidden">
+                        <div class="text-input-group">
+                            <textarea id="text-answer" class="form-control" placeholder="Type your detailed response here..." rows="2"></textarea>
+                            <button type="button" id="send-btn" class="btn btn-primary">
+                                Send
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- TOGGLE INPUT MODE -->
+                    <div class="mode-toggle-area">
+                        <button type="button" id="toggle-input-mode-btn" class="text-link-btn">
+                            ⌨️ Prefer typing? Switch to Text Input
+                        </button>
+                    </div>
+
+                </div>
+
+            </section>
+            
+        </section>
+    </main>
+
+    <footer class="app-footer">
+        <p>&copy; 2026 SpeakUp AI. Running fully local and offline.</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
