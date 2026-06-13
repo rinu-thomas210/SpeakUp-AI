@@ -1,0 +1,76 @@
+# Local AI Technical Interviewer 🤖🎙️
+
+An offline, privacy-first AI-powered technical interview simulator. This project acts as an interactive senior tech interviewer, naturally shifting between technical deep-dives, behavioral scenarios, and project challenges. 
+
+It offers **two modes of operation**:
+1. 🎛️ **Terminal Mode:** A command-line script utilizing `sounddevice`, native audio recording, and local Text-to-Speech (`pyttsx3`).
+2. 🌐 **Web Server Mode:** An lightweight `http.server` backend supporting a custom web frontend with real-time Speech-to-Text (`faster-whisper`) handling browser-recorded audio chunks.
+
+---
+
+##  Features
+
+* **100% Local & Offline:** Powered entirely by **Ollama** (`llama3.2:1b` by default) and **faster-whisper**. No API keys required, no external data tracking.
+* **Intelligent Interview Flow:** Features an advanced dynamic prompt engine ensuring the AI acts strictly as an interviewer, provides contextual feedback, and shifts question styles seamlessly without breaking character.
+* **Dual Interaction Options:** Choose between a quick-start CLI environment or an extensible, clean local web server interface.
+* **Resilient Design:** Built-in diagnostic fail-safes allow seamless typing fallback if your voice recorder or browser audio stream catches empty frames or silence.
+
+---
+
+## 🛠️ Architecture Blueprint
+
+* **Frontend:** Standard vanilla stack (HTML5, CSS3, JavaScript) communicating via structured JSON endpoints.
+* **Backend App Server:** Python native `http.server` mapping explicit routes for model checks, interview generation pipelines, and audio decoding.
+* **Inference Engine:** `Ollama` for local LLM text generation.
+* **Speech-to-Text (STT):** `faster-whisper` (`tiny.en` loaded over INT8 optimization for maximum CPU performance).
+* **Text-to-Speech (TTS):** Native system-level rendering through `pyttsx3`.
+
+---
+
+## 📋 Prerequisites
+
+Before running the code, make sure you have the following installed on your machine:
+
+1. **Python 3.10+**
+2. **Ollama**: Download and install it from [ollama.com](https://ollama.com).
+3. **Download the Model**: Run the following command in your terminal to fetch the default language model:
+   ```bash
+   ollama pull llama3.2:1b🔧 Installation & Setup
+Clone the Repository:
+
+Bash
+git clone [https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git](https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git)
+cd YOUR_REPO_NAME
+Create and Activate a Virtual Environment:
+
+Bash
+python -m venv venv
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+Install Core Dependencies:
+
+Bash
+pip install ollama pyttsx3 sounddevice numpy scipy faster-whisper
+
+Note: Depending on your operating system, sounddevice may require underlying system libraries. If you face audio interface bugs on Linux, run sudo apt-get install libportaudio2.
+
+🏃 Getting Started
+Option 1: Terminal Mode (CLI)
+To run the quick voice-and-type interactive session directly in your terminal console:
+
+Bash
+python interview_cli.py
+Follow the console prompts: Press ENTER to begin talking, hit ENTER again to conclude, and listen to the AI's spoken evaluation and follow-up.
+
+Option 2: Web Interface Mode
+To open the clean UI through your local browser environment:
+
+Ensure your static frontend files (index.html, etc.) are located inside a directory named /static right next to your server file.
+
+Spin up the server:
+
+Bash
+python server.py
+Open your browser and navigate to: http://localhost:8000

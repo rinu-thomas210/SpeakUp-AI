@@ -5,6 +5,7 @@ let isRecording = false;
 let isMuted = false;
 let activeStream = null;
 let currentUtterance = null;
+let isInterviewActive = false;
 
 // Audio Context & Visualizer variables
 let audioCtx = null;
@@ -121,7 +122,7 @@ function initializeVoices() {
 function speakText(text) {
     window.speechSynthesis.cancel(); // Abort active speaking
     
-    if (isMuted) return;
+    if (!isInterviewActive || isMuted) return;
     
     const statusText = document.getElementById("interviewer-status-text");
     const waveAnim = document.getElementById("audio-wave-animation");
@@ -229,6 +230,7 @@ async function startInterview() {
         const data = await response.json();
         
         // Success: transition UI screens
+        isInterviewActive = true;
         document.getElementById("setup-card").classList.remove("active");
         document.getElementById("setup-card").classList.add("hidden");
         document.getElementById("interview-dashboard").classList.remove("hidden");
@@ -236,10 +238,6 @@ async function startInterview() {
         // Load first question
         const chatHistory = document.getElementById("chat-history");
         chatHistory.innerHTML = ""; // Clear placeholder
-        
-        if (data.fallback) {
-            appendMessage("system", data.fallback_reason || "Ollama offline. Switched to Built-in Mock Interviewer.");
-        }
         
         appendMessage("assistant", data.question);
         speakText(data.question);
@@ -308,10 +306,21 @@ function startAudioContext(stream) {
     const WIDTH = canvas.width;
     const HEIGHT = canvas.height;
     
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // audioCtx is initialized in toggleRecording synchronously
+    if (!audioCtx) return;
+    
+    // Disconnect old source if exists
+    if (window.activeAudioSource) {
+        try { window.activeAudioSource.disconnect(); } catch(e) {}
+    }
+    
     const source = audioCtx.createMediaStreamSource(stream);
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 128;
+    window.activeAudioSource = source;
+    
+    if (!analyser) {
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 128;
+    }
     
     bufferLength = analyser.frequencyBinCount;
     dataArray = new Uint8Array(bufferLength);
@@ -362,6 +371,15 @@ async function toggleRecording() {
     // Stop any active synthesis
     window.speechSynthesis.cancel();
     
+    // Synchronously initialize/resume AudioContext on user gesture
+    if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    
     if (!isRecording) {
         // Start Recording
         try {
@@ -392,16 +410,6 @@ async function toggleRecording() {
                 const mimeType = mediaRecorder.mimeType;
                 const audioBlob = new Blob(audioChunks, { type: mimeType });
                 console.log(`[REC] Audio blob created: ${audioBlob.size} bytes, type: ${mimeType}`);
-                
-                // NOW clean up the stream and audio context
-                if (activeStream) {
-                    activeStream.getTracks().forEach(track => track.stop());
-                    activeStream = null;
-                }
-                if (audioCtx) {
-                    try { audioCtx.close(); } catch(e) { /* ignore */ }
-                    audioCtx = null;
-                }
                 
                 // Submit to server
                 if (audioBlob.size > 0) {
@@ -451,6 +459,8 @@ async function toggleRecording() {
 }
 
 async function submitAudioAnswer(audioBlob) {
+    if (!isInterviewActive) return;
+    
     const statusBar = document.getElementById("status-bar");
     const statusTextEl = document.getElementById("status-text");
     const recordBtn = document.getElementById("record-btn");
@@ -463,7 +473,7 @@ async function submitAudioAnswer(audioBlob) {
     console.log(`[SUBMIT] Sending audio blob to server: ${audioBlob.size} bytes`);
     
     try {
-        const response = await fetch("/api/answer-audio", {
+        const response = await fetch("/api/transcribe-audio", {
             method: "POST",
             headers: {
                 "Content-Type": audioBlob.type
@@ -471,18 +481,18 @@ async function submitAudioAnswer(audioBlob) {
             body: audioBlob
         });
         
-        console.log(`[SUBMIT] Server responded with status: ${response.status}`);
+        console.log(`[SUBMIT] Transcription server responded with status: ${response.status}`);
         
+        if (!isInterviewActive) return;
         const data = await response.json();
-        console.log("[SUBMIT] Server response data:", data);
         
+        if (!isInterviewActive) return;
         if (!response.ok) {
             throw new Error(data.error || "Transcription server error.");
         }
         
-        statusBar.classList.add("hidden");
-        
         if (data.error === "blank_audio") {
+            statusBar.classList.add("hidden");
             // Silence was transcribed
             appendMessage("assistant", "I couldn't hear you clearly. Could you please re-record or type your answer?");
             return;
@@ -493,29 +503,51 @@ async function submitAudioAnswer(audioBlob) {
         console.log(`[SUBMIT] User transcription displayed: "${data.transcription}"`);
         
         // Show waiting state while Ollama processes
-        statusBar.classList.remove("hidden");
         statusTextEl.textContent = "AI Interviewer is evaluating your response...";
         
-        // Append AI response & Speak
+        const textResponse = await fetch("/api/answer-text", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ text: data.transcription })
+        });
+        
+        if (!isInterviewActive) return;
+        if (!textResponse.ok) {
+            const errData = await textResponse.json();
+            throw new Error(errData.error || "Server processing failed.");
+        }
+        
+        const aiData = await textResponse.json();
+        
+        if (!isInterviewActive) return;
         statusBar.classList.add("hidden");
-        appendMessage("assistant", data.response);
+        
+        // Append AI response & Speak
+        appendMessage("assistant", aiData.response);
         console.log(`[SUBMIT] AI response displayed.`);
-        speakText(data.response);
+        speakText(aiData.response);
         
     } catch (err) {
+        if (!isInterviewActive) return;
         statusBar.classList.add("hidden");
         console.error("[SUBMIT] Error:", err);
         appendMessage("assistant", `Error processing your response: ${err.message}. Please try again or switch to text input.`);
     } finally {
-        recordBtn.disabled = false;
-        if (helpText) {
-            helpText.innerHTML = "Click the mic to <strong>start recording</strong>. Click again when <strong>finished</strong>.";
+        if (isInterviewActive) {
+            recordBtn.disabled = false;
+            if (helpText) {
+                helpText.innerHTML = "Click the mic to <strong>start recording</strong>. Click again when <strong>finished</strong>.";
+            }
         }
     }
 }
 
 // 7. TEXT FALLBACK ANSWER FLOW
 async function sendTextAnswer() {
+    if (!isInterviewActive) return;
+    
     const inputArea = document.getElementById("text-answer");
     const answerText = inputArea.value.trim();
     if (!answerText) return;
@@ -547,25 +579,31 @@ async function sendTextAnswer() {
             body: JSON.stringify({ text: answerText })
         });
         
+        if (!isInterviewActive) return;
         if (!response.ok) {
             const errData = await response.json();
             throw new Error(errData.error || "Server processing failed.");
         }
         
         const data = await response.json();
+        
+        if (!isInterviewActive) return;
         statusBar.classList.add("hidden");
         
         appendMessage("assistant", data.response);
         speakText(data.response);
         
     } catch (err) {
+        if (!isInterviewActive) return;
         statusBar.classList.add("hidden");
         alert(`Failed to submit answer:\n${err.message}`);
         console.error(err);
     } finally {
-        sendBtn.disabled = false;
-        inputArea.disabled = false;
-        inputArea.focus();
+        if (isInterviewActive) {
+            sendBtn.disabled = false;
+            inputArea.disabled = false;
+            inputArea.focus();
+        }
     }
 }
 
@@ -600,6 +638,7 @@ function toggleInputMode() {
 // 8. EXIT INTERVIEW
 function exitInterview() {
     if (confirm("Are you sure you want to exit the current interview? Your session history will be reset.")) {
+        isInterviewActive = false;
         // Stop any speech or recording
         window.speechSynthesis.cancel();
         if (isRecording) {
